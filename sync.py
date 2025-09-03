@@ -1,3 +1,30 @@
+def check_missing_mp3_files():
+    """
+    Compare songs in the mp3 folder vs Spotify liked songs and report missing files.
+    """
+    playlist_path = "Spotify_Liked_Songs_List.txt"
+    if not os.path.exists(playlist_path):
+        print(f"[ERROR] Playlist log file not found: {playlist_path}")
+        return []
+    with open(playlist_path, "r", encoding="utf-8") as f:
+        liked_songs = [line.strip() for line in f if line.strip()]
+    mp3_files = [f for f in os.listdir(MUSIC_DIR) if f.endswith(".mp3")]
+    mp3_files_set = set([sanitize_filename(f.replace(".mp3", "")) for f in mp3_files])
+    missing = []
+    for song in liked_songs:
+        expected_filename = sanitize_filename(song)
+        if expected_filename not in mp3_files_set:
+            missing.append(song)
+    print(f"[RESULT] {len(missing)} songs missing from mp3 folder:")
+    for song in missing:
+        print(f"  - {song}")
+    # Write missing songs to main folder
+    missing_path = "Missing_Songs.txt"
+    with open(missing_path, "w", encoding="utf-8") as f:
+        for song in missing:
+            f.write(song + "\n")
+    print(f"[LOG] Missing songs list written to {missing_path}")
+    return missing
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
@@ -58,18 +85,31 @@ def download_mp3(track_name, artist, out_dir):
             return False
 
 def get_all_liked_songs(sp):
+    import time
+    import requests
     print("[LOG] Fetching all liked songs from Spotify...")
     all_items = []
     offset = 0
     limit = 50
+    max_retries = 5
     while True:
-        results = sp.current_user_saved_tracks(limit=limit, offset=offset)
+        for attempt in range(max_retries):
+            try:
+                results = sp.current_user_saved_tracks(limit=limit, offset=offset)
+                break
+            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout, Exception) as e:
+                print(f"[ERROR] Spotify API error on offset {offset}, attempt {attempt+1}/{max_retries}: {e}")
+                time.sleep(2 * (attempt + 1))  # Exponential backoff
+        else:
+            print(f"[ERROR] Failed to fetch songs from Spotify after {max_retries} attempts. Exiting.")
+            break
         items = results['items']
         all_items.extend(items)
         print(f"[LOG] Fetched {len(items)} songs (offset {offset})")
         if len(items) < limit:
             break
         offset += limit
+        time.sleep(1)  # Delay between requests to avoid rate limiting
     print(f"[LOG] Total liked songs fetched: {len(all_items)}")
     return all_items
 
@@ -79,20 +119,21 @@ def sync_spotify_liked_songs():
     liked_songs_log = []
     for item in items:
         track = item['track']
-    track_name = track['name']
-    artist = track['artists'][0]['name']
-    mp3_filename = f"{track_name} - {artist}.mp3"
-    sanitized_name = sanitize_filename(mp3_filename)
-    spotify_songs.append(sanitized_name)
-    liked_songs_log.append(f"{track_name} - {artist}")
-    print(f"[LOG] Processing: {track_name} - {artist}")
-    match = find_match(track_name, artist)
-    if not match:
-        print(f"[LOG] MP3 not found locally. Downloading...")
-        if download_mp3(track_name, artist, MUSIC_DIR):
-            local_files.append(sanitized_name)
-    else:
-        print(f"[LOG] MP3 found locally: {match}")
+        track_name = track['name']
+        artist = track['artists'][0]['name']
+        mp3_filename = f"{track_name} - {artist}.mp3"
+        sanitized_name = sanitize_filename(mp3_filename)
+        spotify_songs.append(sanitized_name)
+        liked_songs_log.append(f"{track_name} - {artist}")
+        print(f"[LOG] Processing: {track_name} - {artist}")
+        match = find_match(track_name, artist)
+        if not match:
+            print(f"[LOG] MP3 not found locally. Downloading...")
+            if download_mp3(track_name, artist, MUSIC_DIR):
+                local_files.append(sanitized_name)
+        else:
+            print(f"[LOG] MP3 found locally: {match}")
+
     # Optionally remove local files that are no longer in Spotify liked songs
     for local_file in local_files[:]:
         sanitized_local_file = sanitize_filename(local_file)
@@ -103,12 +144,14 @@ def sync_spotify_liked_songs():
                 local_files.remove(local_file)
             except Exception as e:
                 print(f"[ERROR] Failed to remove {local_file}: {e}")
-    # Write playlist file
-    playlist_path = os.path.join(MUSIC_DIR, "Spotify_Liked_Songs.m3u")
+
+    # Write playlist file to main folder
+    playlist_path = "Spotify_Liked_Songs.m3u"
     write_m3u_playlist(spotify_songs, playlist_path)
     print(f"[LOG] Playlist written to {playlist_path}")
-    # Write liked songs log file
-    log_path = os.path.join(MUSIC_DIR, "Spotify_Liked_Songs_List.txt")
+
+    # Write liked songs log file to main folder
+    log_path = "Spotify_Liked_Songs_List.txt"
     with open(log_path, "w", encoding="utf-8") as log_file:
         for entry in liked_songs_log:
             log_file.write(entry + "\n")
@@ -125,67 +168,37 @@ def write_m3u_playlist(mp3_filenames, out_path):
             m3u.write(f"{mp3}\n")
 
 def main():
-    parser = argparse.ArgumentParser(description='Download Spotify liked songs to local mp3 folder')
-    parser.add_argument('-d', '--download', action='store_true', help='Download missing or new songs from Spotify liked songs')
-    args = parser.parse_args()
-    print("[LOG] Running in download mode - syncing Spotify liked songs")
-    sync_spotify_liked_songs()
-
-if __name__ == "__main__":
-    main()
-
-def download_mp3(track_name, artist, out_dir):
-    search_query = f"ytsearch1:{track_name} {artist} audio"
-    print(f"[LOG] Attempting to download MP3 for: {track_name} - {artist}")
-    sanitized_name = sanitize_filename(f"{track_name} - {artist}")
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': os.path.join(out_dir, f"{sanitized_name}.%(ext)s"),
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'quiet': True,
-        'embed-metadata': True,
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            print(f"[LOG] Downloading from YouTube with query: {search_query}")
-            info = ydl.extract_info(search_query, download=True)
-            print(f"[LOG] Downloaded: {track_name} - {artist}")
-            return True
-        except Exception as e:
-            print(f"[ERROR] Failed to download {track_name} - {artist}: {e}")
-            return False
-
-def get_all_liked_songs(sp):
-    print("[LOG] Fetching all liked songs from Spotify...")
-    all_items = []
-    offset = 0
-    limit = 50
-    while True:
-        results = sp.current_user_saved_tracks(limit=limit, offset=offset)
-        items = results['items']
-        all_items.extend(items)
-        print(f"[LOG] Fetched {len(items)} songs (offset {offset})")
-        if len(items) < limit:
-            break
-        offset += limit
-    print(f"[LOG] Total liked songs fetched: {len(all_items)}")
-    return all_items
-
-def main():
     parser = argparse.ArgumentParser(description='Sync Spotify liked songs with local library and iPod')
-    parser.add_argument('-d', '--download', action='store_true', 
-                       help='Download missing or new songs from Spotify liked songs')
-    parser.add_argument('--no-itunes', action='store_true',
-                       help='Skip iTunes sync process (files will be copied but not visible)')
+    parser.add_argument('-d', '--download', action='store_true', help='Download missing or new songs from Spotify liked songs')
+    parser.add_argument('-m', '--missing', action='store_true', help='Check for missing songs in mp3 folder vs playlist')
     args = parser.parse_args()
-    
+
     if args.download:
-        print("[LOG] Running in download mode - syncing Spotify liked songs")
-        sync_spotify_liked_songs()
+        print("[LOG] Checking for missing songs in mp3 folder vs playlist...")
+        missing_songs = check_missing_mp3_files()
+        if not missing_songs:
+            print("[LOG] No missing songs to download.")
+        else:
+            print(f"[LOG] Downloading {len(missing_songs)} missing songs...")
+            for song in missing_songs:
+                # Split song into track_name and artist
+                if ' - ' in song:
+                    track_name, artist = song.split(' - ', 1)
+                else:
+                    track_name = song
+                    artist = ''
+                if download_mp3(track_name, artist, MUSIC_DIR):
+                    print(f"[LOG] Downloaded: {song}")
+                else:
+                    print(f"[ERROR] Failed to download: {song}")
+            # Delete Missing_Songs.txt after download
+            missing_path = "Missing_Songs.txt"
+            if os.path.exists(missing_path):
+                os.remove(missing_path)
+                print(f"[LOG] Deleted {missing_path}")
+    elif args.missing:
+        print("[LOG] Checking for missing songs in mp3 folder vs playlist...")
+        check_missing_mp3_files()
     else:
         print("[LOG] Running in normal mode - processing all liked songs")
         items = get_all_liked_songs(sp)
@@ -204,7 +217,6 @@ def main():
                     local_files.append(sanitized_name)
             else:
                 print(f"[LOG] MP3 found locally: {match}")
-    
 
 if __name__ == "__main__":
     main()
