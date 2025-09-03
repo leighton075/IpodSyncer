@@ -5,7 +5,6 @@ from difflib import get_close_matches
 import yt_dlp
 import argparse
 import re
-from pydub import AudioSegment
 import sys
 
 # Get absolute path to project directory
@@ -148,23 +147,6 @@ def write_m3u_playlist(mp3_filenames, out_path):
             m3u.write(f"#EXTINF:-1,{display_title}\n")
             m3u.write(f"{mp3}\n")
 
-def equalize_mp3_volumes(target_dBFS=-16.0):
-    """
-    Normalize the volume of all MP3 files in the mp3 folder to target_dBFS.
-    """
-    mp3_folder = MUSIC_DIR
-    print(f"[LOG] Normalizing all MP3s in {mp3_folder} to {target_dBFS} dBFS...")
-    for filename in os.listdir(mp3_folder):
-        if filename.endswith(".mp3"):
-            path = os.path.join(mp3_folder, filename)
-            try:
-                audio = AudioSegment.from_mp3(path)
-                change_in_dBFS = target_dBFS - audio.dBFS
-                normalized_audio = audio.apply_gain(change_in_dBFS)
-                normalized_audio.export(path, format="mp3")
-                print(f"[LOG] Normalized: {filename}")
-            except Exception as e:
-                print(f"[ERROR] Could not normalize {filename}: {e}")
 
 def check_missing_mp3_files():
     """
@@ -196,27 +178,25 @@ def check_missing_mp3_files():
 
 def print_help():
     print("""
-Usage: sync.py [options]
+Usage: ipodsync [options]
 
 Options:
   -d, --download    Download missing or new songs from Spotify liked songs
   -m, --missing     Check for missing songs in mp3 folder vs playlist
-  -v, --volume      Equalize volume of all MP3s in mp3 folder
+
   -p, --playlist    Regenerate the .m3u playlist and log file
   -h, --help        Show this help message and exit
 """)
 
 def main():
-    parser = argparse.ArgumentParser(description='Sync Spotify liked songs with local library and iPod')
+    parser = argparse.ArgumentParser(description='Sync Spotify liked songs with local library')
     parser.add_argument('-d', '--download', action='store_true', help='Download missing or new songs from Spotify liked songs')
     parser.add_argument('-m', '--missing', action='store_true', help='Check for missing songs in mp3 folder vs playlist')
     parser.add_argument('-p', '--playlist', action='store_true', help='Regenerate the .m3u playlist and log file')
-    parser.add_argument('-v', '--volume', action='store_true', help='Equalize volume of all MP3s in mp3 folder')
     args = parser.parse_args()
 
-    if args.volume:
-        equalize_mp3_volumes()
-    elif args.download:
+    did_action = False
+    if args.download:
         print("[LOG] Checking for missing songs in mp3 folder vs playlist...")
         missing_songs = check_missing_mp3_files()
         if not missing_songs:
@@ -239,13 +219,16 @@ def main():
             if os.path.exists(missing_path):
                 os.remove(missing_path)
                 print(f"[LOG] Deleted {missing_path}")
-    elif args.missing:
+        did_action = True
+    if args.missing:
         print("[LOG] Checking for missing songs in mp3 folder vs playlist...")
         check_missing_mp3_files()
-    elif args.playlist:
+        did_action = True
+    if args.playlist:
         print("[LOG] Regenerating playlist and log file...")
         sync_spotify_liked_songs()
-    else:
+        did_action = True
+    if not did_action:
         print("[LOG] Running in normal mode - processing all liked songs")
         items = get_all_liked_songs(sp)
         print(f"[LOG] Found {len(items)} liked songs.")
