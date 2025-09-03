@@ -1,4 +1,3 @@
-
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
@@ -22,7 +21,7 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     client_secret="9cae9ee58ae342d393414625dde6c9f9",
     redirect_uri="http://127.0.0.1:8000/callback",
     scope="user-library-read"
-))
+), requests_timeout=30)  # Increase timeout to 30 seconds
 
 def find_match(track_name, artist):
     query = f"{track_name} {artist}".lower()
