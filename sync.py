@@ -77,21 +77,23 @@ def get_all_liked_songs(sp):
 def sync_spotify_liked_songs():
     items = get_all_liked_songs(sp)
     spotify_songs = []
+    liked_songs_log = []
     for item in items:
         track = item['track']
-        track_name = track['name']
-        artist = track['artists'][0]['name']
-        mp3_filename = f"{track_name} - {artist}.mp3"
-        sanitized_name = sanitize_filename(mp3_filename)
-        spotify_songs.append(sanitized_name)
-        print(f"[LOG] Processing: {track_name} - {artist}")
-        match = find_match(track_name, artist)
-        if not match:
-            print(f"[LOG] MP3 not found locally. Downloading...")
-            if download_mp3(track_name, artist, MUSIC_DIR):
-                local_files.append(sanitized_name)
-        else:
-            print(f"[LOG] MP3 found locally: {match}")
+    track_name = track['name']
+    artist = track['artists'][0]['name']
+    mp3_filename = f"{track_name} - {artist}.mp3"
+    sanitized_name = sanitize_filename(mp3_filename)
+    spotify_songs.append(sanitized_name)
+    liked_songs_log.append(f"{track_name} - {artist}")
+    print(f"[LOG] Processing: {track_name} - {artist}")
+    match = find_match(track_name, artist)
+    if not match:
+        print(f"[LOG] MP3 not found locally. Downloading...")
+        if download_mp3(track_name, artist, MUSIC_DIR):
+            local_files.append(sanitized_name)
+    else:
+        print(f"[LOG] MP3 found locally: {match}")
     # Optionally remove local files that are no longer in Spotify liked songs
     for local_file in local_files[:]:
         sanitized_local_file = sanitize_filename(local_file)
@@ -102,6 +104,26 @@ def sync_spotify_liked_songs():
                 local_files.remove(local_file)
             except Exception as e:
                 print(f"[ERROR] Failed to remove {local_file}: {e}")
+    # Write playlist file
+    playlist_path = os.path.join(MUSIC_DIR, "Spotify_Liked_Songs.m3u")
+    write_m3u_playlist(spotify_songs, playlist_path)
+    print(f"[LOG] Playlist written to {playlist_path}")
+    # Write liked songs log file
+    log_path = os.path.join(MUSIC_DIR, "Spotify_Liked_Songs_List.txt")
+    with open(log_path, "w", encoding="utf-8") as log_file:
+        for entry in liked_songs_log:
+            log_file.write(entry + "\n")
+    print(f"[LOG] Spotify liked songs list written to {log_path}")
+def write_m3u_playlist(mp3_filenames, out_path):
+    """
+    Write an M3U playlist with #EXTM3U header and #EXTINF lines.
+    """
+    with open(out_path, "w", encoding="utf-8") as m3u:
+        m3u.write("#EXTM3U\n")
+        for mp3 in mp3_filenames:
+            display_title = mp3.replace(".mp3", "")
+            m3u.write(f"#EXTINF:-1,{display_title}\n")
+            m3u.write(f"{mp3}\n")
 
 def main():
     parser = argparse.ArgumentParser(description='Download Spotify liked songs to local mp3 folder')
