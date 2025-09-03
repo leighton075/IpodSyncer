@@ -147,15 +147,17 @@ def sync_spotify_liked_songs():
 
     # Write playlist file to main folder
     playlist_path = "Spotify_Liked_Songs.m3u"
+    print(f"[LOG] Preparing to write playlist to {os.path.abspath(playlist_path)}")
+    print(f"[LOG] Number of songs in playlist: {len(spotify_songs)}")
     write_m3u_playlist(spotify_songs, playlist_path)
-    print(f"[LOG] Playlist written to {playlist_path}")
+    print(f"[LOG] Playlist written to {os.path.abspath(playlist_path)}")
 
     # Write liked songs log file to main folder
     log_path = "Spotify_Liked_Songs_List.txt"
     with open(log_path, "w", encoding="utf-8") as log_file:
         for entry in liked_songs_log:
             log_file.write(entry + "\n")
-    print(f"[LOG] Spotify liked songs list written to {log_path}")
+    print(f"[LOG] Spotify liked songs list written to {os.path.abspath(log_path)}")
 def write_m3u_playlist(mp3_filenames, out_path):
     """
     Write an M3U playlist with #EXTM3U header and #EXTINF lines.
@@ -171,6 +173,7 @@ def main():
     parser = argparse.ArgumentParser(description='Sync Spotify liked songs with local library and iPod')
     parser.add_argument('-d', '--download', action='store_true', help='Download missing or new songs from Spotify liked songs')
     parser.add_argument('-m', '--missing', action='store_true', help='Check for missing songs in mp3 folder vs playlist')
+    parser.add_argument('-p', '--playlist', action='store_true', help='Regenerate the .m3u playlist and log file')
     args = parser.parse_args()
 
     if args.download:
@@ -199,6 +202,9 @@ def main():
     elif args.missing:
         print("[LOG] Checking for missing songs in mp3 folder vs playlist...")
         check_missing_mp3_files()
+    elif args.playlist:
+        print("[LOG] Regenerating playlist and log file...")
+        sync_spotify_liked_songs()
     else:
         print("[LOG] Running in normal mode - processing all liked songs")
         items = get_all_liked_songs(sp)
