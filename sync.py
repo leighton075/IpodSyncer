@@ -1,30 +1,3 @@
-def check_missing_mp3_files():
-    """
-    Compare songs in the mp3 folder vs Spotify liked songs and report missing files.
-    """
-    playlist_path = "Spotify_Liked_Songs_List.txt"
-    if not os.path.exists(playlist_path):
-        print(f"[ERROR] Playlist log file not found: {playlist_path}")
-        return []
-    with open(playlist_path, "r", encoding="utf-8") as f:
-        liked_songs = [line.strip() for line in f if line.strip()]
-    mp3_files = [f for f in os.listdir(MUSIC_DIR) if f.endswith(".mp3")]
-    mp3_files_set = set([sanitize_filename(f.replace(".mp3", "")) for f in mp3_files])
-    missing = []
-    for song in liked_songs:
-        expected_filename = sanitize_filename(song)
-        if expected_filename not in mp3_files_set:
-            missing.append(song)
-    print(f"[RESULT] {len(missing)} songs missing from mp3 folder:")
-    for song in missing:
-        print(f"  - {song}")
-    # Write missing songs to main folder
-    missing_path = "Missing_Songs.txt"
-    with open(missing_path, "w", encoding="utf-8") as f:
-        for song in missing:
-            f.write(song + "\n")
-    print(f"[LOG] Missing songs list written to {missing_path}")
-    return missing
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
@@ -32,8 +5,12 @@ from difflib import get_close_matches
 import yt_dlp
 import argparse
 import re
+from pydub import AudioSegment
+import sys
 
-MUSIC_DIR = "mp3"
+# Get absolute path to project directory
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+MUSIC_DIR = os.path.join(PROJECT_DIR, "mp3")
 
 def sanitize_filename(filename):
     filename = re.sub(r'[\\/:*?"<>|]', '', filename)
@@ -47,7 +24,8 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     client_id="0755dd447deb4514837f7f821c0cbd42",
     client_secret="9cae9ee58ae342d393414625dde6c9f9",
     redirect_uri="http://127.0.0.1:8000/callback",
-    scope="user-library-read"
+    scope="user-library-read",
+    cache_path=os.path.join(PROJECT_DIR, ".cache")
 ), requests_timeout=30)  # Increase timeout to 30 seconds
 
 def find_match(track_name, artist):
@@ -145,19 +123,20 @@ def sync_spotify_liked_songs():
             except Exception as e:
                 print(f"[ERROR] Failed to remove {local_file}: {e}")
 
-    # Write playlist file to main folder
-    playlist_path = "Spotify_Liked_Songs.m3u"
-    print(f"[LOG] Preparing to write playlist to {os.path.abspath(playlist_path)}")
+    # Write playlist file to mp3 folder
+    playlist_path = os.path.join(MUSIC_DIR, "Spotify_Liked_Songs.m3u")
+    print(f"[LOG] Preparing to write playlist to {playlist_path}")
     print(f"[LOG] Number of songs in playlist: {len(spotify_songs)}")
     write_m3u_playlist(spotify_songs, playlist_path)
-    print(f"[LOG] Playlist written to {os.path.abspath(playlist_path)}")
+    print(f"[LOG] Playlist written to {playlist_path}")
 
-    # Write liked songs log file to main folder
-    log_path = "Spotify_Liked_Songs_List.txt"
+    # Write liked songs log file to project folder
+    log_path = os.path.join(PROJECT_DIR, "Spotify_Liked_Songs_List.txt")
     with open(log_path, "w", encoding="utf-8") as log_file:
         for entry in liked_songs_log:
             log_file.write(entry + "\n")
-    print(f"[LOG] Spotify liked songs list written to {os.path.abspath(log_path)}")
+    print(f"[LOG] Spotify liked songs list written to {log_path}")
+
 def write_m3u_playlist(mp3_filenames, out_path):
     """
     Write an M3U playlist with #EXTM3U header and #EXTINF lines.
@@ -169,14 +148,75 @@ def write_m3u_playlist(mp3_filenames, out_path):
             m3u.write(f"#EXTINF:-1,{display_title}\n")
             m3u.write(f"{mp3}\n")
 
+def equalize_mp3_volumes(target_dBFS=-16.0):
+    """
+    Normalize the volume of all MP3 files in the mp3 folder to target_dBFS.
+    """
+    mp3_folder = MUSIC_DIR
+    print(f"[LOG] Normalizing all MP3s in {mp3_folder} to {target_dBFS} dBFS...")
+    for filename in os.listdir(mp3_folder):
+        if filename.endswith(".mp3"):
+            path = os.path.join(mp3_folder, filename)
+            try:
+                audio = AudioSegment.from_mp3(path)
+                change_in_dBFS = target_dBFS - audio.dBFS
+                normalized_audio = audio.apply_gain(change_in_dBFS)
+                normalized_audio.export(path, format="mp3")
+                print(f"[LOG] Normalized: {filename}")
+            except Exception as e:
+                print(f"[ERROR] Could not normalize {filename}: {e}")
+
+def check_missing_mp3_files():
+    """
+    Compare songs in the mp3 folder vs Spotify liked songs and report missing files.
+    """
+    playlist_path = os.path.join(PROJECT_DIR, "Spotify_Liked_Songs_List.txt")
+    if not os.path.exists(playlist_path):
+        print(f"[ERROR] Playlist log file not found: {playlist_path}")
+        return []
+    with open(playlist_path, "r", encoding="utf-8") as f:
+        liked_songs = [line.strip() for line in f if line.strip()]
+    mp3_files = [f for f in os.listdir(MUSIC_DIR) if f.endswith(".mp3")]
+    mp3_files_set = set([sanitize_filename(f.replace(".mp3", "")) for f in mp3_files])
+    missing = []
+    for song in liked_songs:
+        expected_filename = sanitize_filename(song)
+        if expected_filename not in mp3_files_set:
+            missing.append(song)
+    print(f"[RESULT] {len(missing)} songs missing from mp3 folder:")
+    for song in missing:
+        print(f"  - {song}")
+    # Write missing songs to project folder
+    missing_path = os.path.join(PROJECT_DIR, "Missing_Songs.txt")
+    with open(missing_path, "w", encoding="utf-8") as f:
+        for song in missing:
+            f.write(song + "\n")
+    print(f"[LOG] Missing songs list written to {missing_path}")
+    return missing
+
+def print_help():
+    print("""
+Usage: sync.py [options]
+
+Options:
+  -d, --download    Download missing or new songs from Spotify liked songs
+  -m, --missing     Check for missing songs in mp3 folder vs playlist
+  -v, --volume      Equalize volume of all MP3s in mp3 folder
+  -p, --playlist    Regenerate the .m3u playlist and log file
+  -h, --help        Show this help message and exit
+""")
+
 def main():
     parser = argparse.ArgumentParser(description='Sync Spotify liked songs with local library and iPod')
     parser.add_argument('-d', '--download', action='store_true', help='Download missing or new songs from Spotify liked songs')
     parser.add_argument('-m', '--missing', action='store_true', help='Check for missing songs in mp3 folder vs playlist')
     parser.add_argument('-p', '--playlist', action='store_true', help='Regenerate the .m3u playlist and log file')
+    parser.add_argument('-v', '--volume', action='store_true', help='Equalize volume of all MP3s in mp3 folder')
     args = parser.parse_args()
 
-    if args.download:
+    if args.volume:
+        equalize_mp3_volumes()
+    elif args.download:
         print("[LOG] Checking for missing songs in mp3 folder vs playlist...")
         missing_songs = check_missing_mp3_files()
         if not missing_songs:
