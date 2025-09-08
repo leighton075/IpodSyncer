@@ -1,6 +1,6 @@
 # IpodSyncer
 
-Quick tool to sync Spotify liked songs to local MP3s and generate playlists.
+Quick tool to sync Spotify liked songs to local MP3s and generate playlists. </br>
 Mainly used in combination with a matcha and feminist literature.
 
 ## Setup
