@@ -1,5 +1,29 @@
+# Project specific
 mp3/
 Spotify_Liked_Songs_List.txt
 Missing_Songs.txt
 .cache
 Spotify_Liked_Songs.m3u
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
