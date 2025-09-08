@@ -49,4 +49,4 @@ py sync.py
 - `mp3/` - Downloaded songs go here
 - `Spotify_Liked_Songs.m3u` - Playlist file (in mp3 folder)
 - `Spotify_Liked_Songs_List.txt` - Song list for comparison
-- `Missing_Songs.txt` - Songs that
+- `Missing_Songs.txt` - Songs that the script might have missed that still need to be downloaded
