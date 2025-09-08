@@ -6,6 +6,10 @@ import yt_dlp
 import argparse
 import re
 import sys
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Get absolute path to project directory
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -20,8 +24,8 @@ os.makedirs(MUSIC_DIR, exist_ok=True)
 local_files = [f for f in os.listdir(MUSIC_DIR) if f.endswith(".mp3")]
 
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-    client_id="0755dd447deb4514837f7f821c0cbd42",
-    client_secret="9cae9ee58ae342d393414625dde6c9f9",
+    client_id=os.getenv("CLIENT_ID"),
+    client_secret=os.getenv("CLIENT_SECRET"),
     redirect_uri="http://127.0.0.1:8000/callback",
     scope="user-library-read",
     cache_path=os.path.join(PROJECT_DIR, ".cache")
