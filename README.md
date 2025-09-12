@@ -38,11 +38,11 @@ py sync.py
 - [ ] Consider file size info with `#EXTBYT:`
 
 ### General
-- [ ] Move Spotify credentials to environment variables
 - [ ] Better error handling for network issues
 - [ ] Progress bars for downloads
 - [ ] Config file for output directories
 - [ ] Metadata tagging for downloaded MP3s
+- [ ] Add more information to .m3u
 
 ## Files
 
